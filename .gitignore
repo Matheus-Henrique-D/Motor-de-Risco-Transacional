@@ -9,3 +9,11 @@ __pycache__/
 *$py.class
 .pytest_cache/
 .ipynb_checkpoints/
+
+# IDE/editor
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db

@@ -1,0 +1,659 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Squad 3 — Motor de Risco Transacional | Home Credit Default Risk" />
+  <title>Squad 3 | Motor de Risco Transacional</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    /* ── Design Tokens ─────────────────────────────── */
+    :root {
+      --bg-base:       #0d1117;
+      --bg-card:       #161b22;
+      --bg-card-hover: #1c2128;
+      --bg-header:     #010409;
+      --border:        #30363d;
+      --border-subtle: #21262d;
+      --text-primary:   #e6edf3;
+      --text-secondary: #8b949e;
+      --text-muted:     #484f58;
+      --accent-blue:   #58a6ff;
+      --accent-green:  #3fb950;
+      --accent-red:    #f85149;
+      --accent-yellow: #d29922;
+      --accent-purple: #bc8cff;
+      --accent-orange: #db6d28;
+      --radius-sm: 6px; --radius-md: 10px; --radius-lg: 14px;
+      --font-mono: 'Cascadia Code','Fira Code','Consolas',monospace;
+      --transition: 150ms ease;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    body {
+      background: var(--bg-base); color: var(--text-primary);
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      font-size: 14px; line-height: 1.6; min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+    }
+    .sr-only { position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0; }
+    .hidden { display: none !important; }
+    .container { width:100%;max-width:1280px;margin:0 auto;padding:0 16px; }
+
+    /* ── States ──────────────────────────────────── */
+    .state-overlay {
+      position:fixed;inset:0;display:flex;flex-direction:column;
+      align-items:center;justify-content:center;gap:16px;
+      background:var(--bg-base);z-index:999;
+    }
+    .spinner {
+      width:48px;height:48px;border:3px solid var(--border);
+      border-top-color:var(--accent-blue);border-radius:50%;
+      animation:spin .8s linear infinite;
+    }
+    @keyframes spin { to { transform:rotate(360deg); } }
+    .state-message { font-size:16px;color:var(--text-secondary);font-weight:500; }
+    .state-sub { font-size:13px;color:var(--text-muted);max-width:360px;text-align:center; }
+    .error-icon { font-size:48px; }
+    .btn-retry {
+      margin-top:8px;padding:8px 20px;background:var(--accent-blue);
+      color:#fff;border:none;border-radius:var(--radius-sm);font-size:14px;cursor:pointer;
+    }
+    .btn-retry:hover { opacity:.85; }
+
+    /* ── Header ─────────────────────────────────── */
+    .site-header {
+      background:var(--bg-header);border-bottom:1px solid var(--border);
+      position:sticky;top:0;z-index:100;backdrop-filter:blur(12px);
+    }
+    .header-inner {
+      display:flex;align-items:center;justify-content:space-between;
+      flex-wrap:wrap;gap:12px;padding:14px 16px;max-width:1280px;margin:0 auto;
+    }
+    .header-brand { display:flex;align-items:center;gap:14px; }
+    .header-badge {
+      display:grid;place-items:center;width:44px;height:44px;flex-shrink:0;
+      background:linear-gradient(135deg,var(--accent-blue),var(--accent-purple));
+      border-radius:var(--radius-md);font-size:16px;font-weight:700;color:#fff;
+    }
+    .header-title { font-size:clamp(15px,2.5vw,19px);font-weight:700;color:var(--text-primary); }
+    .header-subtitle { font-size:12px;color:var(--text-secondary); }
+    .header-meta { display:flex;flex-wrap:wrap;gap:8px; }
+    .chip { padding:4px 12px;border-radius:99px;font-size:12px;font-weight:600;font-family:var(--font-mono);border:1px solid transparent; }
+    .chip--green { background:rgba(63,185,80,.15);color:var(--accent-green);border-color:rgba(63,185,80,.3); }
+    .chip--blue  { background:rgba(88,166,255,.15);color:var(--accent-blue);border-color:rgba(88,166,255,.3); }
+    .chip--purple{ background:rgba(188,140,255,.15);color:var(--accent-purple);border-color:rgba(188,140,255,.3); }
+
+    /* ── Layout ──────────────────────────────────── */
+    .main-content { padding:32px 16px;display:flex;flex-direction:column;gap:40px;max-width:1280px;margin:0 auto; }
+    .section-title {
+      font-size:16px;font-weight:600;color:var(--text-primary);
+      margin-bottom:16px;padding-bottom:10px;border-bottom:1px solid var(--border-subtle);
+      display:flex;align-items:center;gap:8px;
+    }
+    .section-title::before {
+      content:'';width:3px;height:18px;flex-shrink:0;border-radius:2px;
+      background:linear-gradient(to bottom,var(--accent-blue),var(--accent-purple));
+    }
+    .card {
+      background:var(--bg-card);border:1px solid var(--border);
+      border-radius:var(--radius-lg);padding:20px;
+      transition:border-color var(--transition);
+    }
+    .card:hover { border-color:#484f58; }
+    .card-title { font-size:14px;font-weight:600;color:var(--text-primary);margin-bottom:16px;display:flex;align-items:center;gap:8px; }
+    .card-tag { margin-left:auto;font-size:11px;font-weight:500;font-family:var(--font-mono);color:var(--text-secondary);background:var(--bg-base);padding:2px 8px;border-radius:99px;border:1px solid var(--border); }
+
+    /* ── Summary Cards ──────────────────────────── */
+    .summary-grid { display:grid;grid-template-columns:repeat(2,1fr);gap:12px; }
+    @media(min-width:640px)  { .summary-grid { grid-template-columns:repeat(3,1fr); } }
+    @media(min-width:1024px) { .summary-grid { grid-template-columns:repeat(6,1fr); } }
+    .summary-card {
+      background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-md);
+      padding:16px;display:flex;flex-direction:column;gap:6px;
+      transition:transform var(--transition),border-color var(--transition);
+    }
+    .summary-card:hover { transform:translateY(-2px);border-color:#484f58; }
+    .summary-card__label { font-size:11px;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.05em;font-weight:600; }
+    .summary-card__value { font-size:clamp(18px,3vw,26px);font-weight:700;font-family:var(--font-mono);line-height:1; }
+    .summary-card__sub { font-size:11px;color:var(--text-muted); }
+    .value--green  { color:var(--accent-green); }
+    .value--blue   { color:var(--accent-blue); }
+    .value--red    { color:var(--accent-red); }
+    .value--yellow { color:var(--accent-yellow); }
+    .value--purple { color:var(--accent-purple); }
+    .value--orange { color:var(--accent-orange); }
+
+    /* ── Two Column ─────────────────────────────── */
+    .two-col-grid { display:grid;grid-template-columns:1fr;gap:16px; }
+    @media(min-width:768px) { .two-col-grid { grid-template-columns:1fr 1fr; } }
+    .chart-wrapper { position:relative;height:240px; }
+    .chart-wrapper--tall { height:460px; }
+    @media(min-width:768px) { .chart-wrapper { height:290px; } .chart-wrapper--tall { height:540px; } }
+
+    /* ── Confusion Matrix ───────────────────────── */
+    .confusion-matrix {
+      display:grid;grid-template-columns:auto 1fr 1fr;grid-template-rows:auto 1fr 1fr;
+      gap:4px;font-size:12px;margin-bottom:14px;
+    }
+    .cm-header { font-size:11px;color:var(--text-muted);text-align:center;padding:4px;font-weight:600;text-transform:uppercase;letter-spacing:.05em; }
+    .cm-header--row { display:flex;align-items:center;justify-content:flex-end;padding-right:8px;writing-mode:horizontal-tb; }
+    .cm-cell { border-radius:var(--radius-sm);padding:14px 10px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;min-height:80px; }
+    .cm-cell--tn { background:rgba(63,185,80,.15);border:1px solid rgba(63,185,80,.3); }
+    .cm-cell--fp { background:rgba(248,81,73,.15);border:1px solid rgba(248,81,73,.3); }
+    .cm-cell--fn { background:rgba(210,153,34,.15);border:1px solid rgba(210,153,34,.3); }
+    .cm-cell--tp { background:rgba(88,166,255,.15);border:1px solid rgba(88,166,255,.3); }
+    .cm-cell__value { font-size:clamp(16px,3vw,22px);font-weight:700;font-family:var(--font-mono); }
+    .cm-cell__label { font-size:10px;font-weight:600;text-align:center;text-transform:uppercase;letter-spacing:.04em;line-height:1.3; }
+    .cm-cell__sub { font-size:10px;color:var(--text-muted);text-align:center; }
+    .color--green  { color:var(--accent-green); }
+    .color--red    { color:var(--accent-red); }
+    .color--yellow { color:var(--accent-yellow); }
+    .color--blue   { color:var(--accent-blue); }
+    .confusion-legend { display:flex;flex-wrap:wrap;gap:10px;margin-top:4px; }
+    .legend-item { display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text-secondary); }
+    .legend-dot { width:8px;height:8px;border-radius:50%;flex-shrink:0; }
+
+    /* ── Feature Filters ────────────────────────── */
+    .feature-filters { display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px; }
+    .filter-btn {
+      padding:5px 14px;border-radius:99px;border:1px solid var(--border);
+      background:transparent;color:var(--text-secondary);font-size:12px;font-weight:500;
+      cursor:pointer;display:flex;align-items:center;gap:6px;transition:all var(--transition);
+    }
+    .filter-btn:hover { border-color:var(--accent-blue);color:var(--accent-blue); }
+    .filter-btn.active { background:rgba(88,166,255,.15);border-color:rgba(88,166,255,.4);color:var(--accent-blue); }
+    .dot { width:8px;height:8px;border-radius:50%;display:inline-block; }
+    .dot--red  { background:var(--accent-red); }
+    .dot--blue { background:var(--accent-blue); }
+
+    /* ── Data Table ─────────────────────────────── */
+    .table-card { padding:0;overflow:hidden; }
+    .table-responsive { overflow-x:auto; }
+    .data-table { width:100%;border-collapse:collapse;font-size:13px; }
+    .data-table thead { background:var(--bg-base);border-bottom:1px solid var(--border); }
+    .data-table th { padding:12px 16px;text-align:left;font-size:11px;font-weight:600;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.05em;white-space:nowrap; }
+    .data-table th.text-right,.data-table td.text-right { text-align:right; }
+    .data-table td { padding:12px 16px;border-bottom:1px solid var(--border-subtle);color:var(--text-primary);white-space:nowrap; }
+    .data-table tr:last-child td { border-bottom:none; }
+    .data-table tbody tr { transition:background var(--transition); }
+    .data-table tbody tr:hover { background:var(--bg-card-hover); }
+    .file-name { font-family:var(--font-mono);font-size:12px;color:var(--accent-blue); }
+    .null-bar-wrap { display:flex;align-items:center;gap:8px;min-width:120px; }
+    .null-bar-bg { flex:1;height:6px;background:var(--bg-base);border-radius:3px;overflow:hidden; }
+    .null-bar-fill { height:100%;border-radius:3px;transition:width .6s ease; }
+    .null-bar-pct { font-size:11px;font-family:var(--font-mono);min-width:36px;text-align:right;color:var(--text-secondary); }
+    .key-badge { display:inline-block;padding:2px 8px;border-radius:var(--radius-sm);font-size:10px;font-weight:600;font-family:var(--font-mono);background:rgba(88,166,255,.15);color:var(--accent-blue);border:1px solid rgba(88,166,255,.2); }
+    .desc-text { color:var(--text-secondary);font-size:12px;white-space:normal;min-width:200px;max-width:340px; }
+
+    /* ── Finance Cards ──────────────────────────── */
+    .finance-grid { display:grid;grid-template-columns:repeat(2,1fr);gap:12px; }
+    @media(min-width:640px)  { .finance-grid { grid-template-columns:repeat(3,1fr); } }
+    @media(min-width:1024px) { .finance-grid { grid-template-columns:repeat(4,1fr); } }
+    .finance-card { background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-md);padding:18px;display:flex;flex-direction:column;gap:8px; }
+    .finance-card__icon { font-size:22px; }
+    .finance-card__label { font-size:11px;font-weight:600;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.05em; }
+    .finance-card__value { font-size:20px;font-weight:700;font-family:var(--font-mono); }
+    .finance-card__desc { font-size:11px;color:var(--text-muted);line-height:1.4; }
+
+    /* ── Footer ─────────────────────────────────── */
+    .site-footer { background:var(--bg-header);border-top:1px solid var(--border);margin-top:40px;padding:20px 0; }
+    .footer-inner { display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;font-size:12px;color:var(--text-muted);max-width:1280px;margin:0 auto;padding:0 16px; }
+    .site-footer a { color:var(--accent-blue);text-decoration:none; }
+    .site-footer a:hover { text-decoration:underline; }
+
+    /* ── Scrollbar & Focus ──────────────────────── */
+    ::-webkit-scrollbar { width:6px;height:6px; }
+    ::-webkit-scrollbar-track { background:var(--bg-base); }
+    ::-webkit-scrollbar-thumb { background:var(--border);border-radius:3px; }
+    ::-webkit-scrollbar-thumb:hover { background:#484f58; }
+    :focus-visible { outline:2px solid var(--accent-blue);outline-offset:2px;border-radius:var(--radius-sm); }
+  </style>
+</head>
+<body>
+
+  <!-- LOADING STATE -->
+  <div id="loading-state" class="state-overlay" role="status" aria-live="polite">
+    <div class="spinner" aria-hidden="true"></div>
+    <p class="state-message">Carregando dashboard...</p>
+    <p class="state-sub">Processando dados do pipeline Squad 3</p>
+  </div>
+
+  <!-- ERROR STATE -->
+  <div id="error-state" class="state-overlay hidden" role="alert" aria-live="assertive">
+    <div class="error-icon">⚠️</div>
+    <h2 class="state-message">Erro ao carregar os dados</h2>
+    <p id="error-detail" class="state-sub"></p>
+    <button class="btn-retry" onclick="window.location.reload()">Tentar novamente</button>
+  </div>
+
+  <!-- APP -->
+  <div id="app" class="hidden">
+
+    <header class="site-header" role="banner">
+      <div class="header-inner">
+        <div class="header-brand">
+          <span class="header-badge" aria-label="Squad 3">S3</span>
+          <div>
+            <h1 class="header-title">Motor de Risco Transacional</h1>
+            <p class="header-subtitle">Home Credit Finanças &mdash; Hackathon de Data Science</p>
+          </div>
+        </div>
+        <div class="header-meta">
+          <span class="chip chip--green" id="auc-chip">AUC-ROC: —</span>
+          <span class="chip chip--blue"  id="threshold-chip">Threshold: —</span>
+          <span class="chip chip--purple" id="features-chip">Features: —</span>
+        </div>
+      </div>
+    </header>
+
+    <main class="main-content" role="main">
+
+      <!-- 1. MÉTRICAS RESUMO -->
+      <section aria-labelledby="h-summary">
+        <h2 id="h-summary" class="section-title">Resultados do Modelo</h2>
+        <div class="summary-grid" id="summary-cards" role="list"></div>
+      </section>
+
+      <!-- 2. TARGET + CONFUSÃO -->
+      <section aria-labelledby="h-analysis">
+        <h2 id="h-analysis" class="section-title">Análise de Classificação</h2>
+        <div class="two-col-grid">
+          <article class="card" aria-labelledby="h-target">
+            <h3 id="h-target" class="card-title">🎯 Distribuição TARGET</h3>
+            <div class="chart-wrapper">
+              <canvas id="chart-target" role="img" aria-label="Gráfico de distribuição TARGET"></canvas>
+            </div>
+          </article>
+          <article class="card" aria-labelledby="h-confusion">
+            <h3 id="h-confusion" class="card-title">
+              🔲 Matriz de Confusão
+              <span class="card-tag" id="confusion-tag"></span>
+            </h3>
+            <div class="confusion-matrix" id="confusion-matrix" role="table"></div>
+            <div class="confusion-legend" id="confusion-legend"></div>
+          </article>
+        </div>
+      </section>
+
+      <!-- 3. FEATURE IMPORTANCE -->
+      <section aria-labelledby="h-features">
+        <h2 id="h-features" class="section-title">Top 25 Features por Importância</h2>
+        <article class="card">
+          <div class="feature-filters" role="group" aria-label="Filtrar features">
+            <button class="filter-btn active" data-filter="all">Todas</button>
+            <button class="filter-btn" data-filter="Periférica">
+              <span class="dot dot--red" aria-hidden="true"></span>Comportamentais
+            </button>
+            <button class="filter-btn" data-filter="Principal">
+              <span class="dot dot--blue" aria-hidden="true"></span>Cadastrais
+            </button>
+          </div>
+          <div class="chart-wrapper chart-wrapper--tall">
+            <canvas id="chart-features" role="img" aria-label="Importância das features"></canvas>
+          </div>
+        </article>
+      </section>
+
+      <!-- 4. DATASET OVERVIEW -->
+      <section aria-labelledby="h-dataset">
+        <h2 id="h-dataset" class="section-title">Visão Geral do Dataset</h2>
+        <article class="card table-card">
+          <div class="table-responsive">
+            <table class="data-table">
+              <caption class="sr-only">Tabelas do dataset Home Credit Default Risk</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Arquivo</th>
+                  <th scope="col" class="text-right">Linhas</th>
+                  <th scope="col" class="text-right">Colunas</th>
+                  <th scope="col">Chave</th>
+                  <th scope="col">Nulos %</th>
+                  <th scope="col">Descrição</th>
+                </tr>
+              </thead>
+              <tbody id="dataset-tbody"></tbody>
+            </table>
+          </div>
+        </article>
+      </section>
+
+      <!-- 5. PREMISSAS FINANCEIRAS -->
+      <section aria-labelledby="h-finance">
+        <h2 id="h-finance" class="section-title">Premissas de Negócio</h2>
+        <div class="finance-grid" id="finance-cards" role="list"></div>
+      </section>
+
+    </main>
+
+    <footer class="site-footer" role="contentinfo">
+      <div class="footer-inner">
+        <p>Squad 3 &mdash; Motor de Risco Transacional &bull; Home Credit Default Risk</p>
+        <p><a href="https://www.kaggle.com/c/home-credit-default-risk" target="_blank" rel="noopener">Kaggle Competition</a></p>
+      </div>
+    </footer>
+  </div>
+
+<script>
+// ══════════════════════════════════════════════════════════════════════
+// DATA — Dados reais do pipeline Squad 3
+// ══════════════════════════════════════════════════════════════════════
+var DATA = {
+  model: { auc_roc: 0.7843, threshold: 0.931, total_features: 249, algorithm: "LightGBM" },
+
+  confusion_matrix: { tn: 282673, fp: 13, fn: 24764, tp: 61, threshold: 0.931 },
+
+  target_distribution: {
+    adimplente:   { count: 282686 },
+    inadimplente: { count: 24825  },
+    total: 307511
+  },
+
+  summary_cards: [
+    { label: "AUC-ROC OOF",       value: "0.7843",  sub: "Média nos 5 folds",          color: "value--green"  },
+    { label: "Threshold Ótimo",   value: "0.931",   sub: "Mínimo prejuízo financeiro", color: "value--blue"   },
+    { label: "Total de Features", value: "249",     sub: "Após feature engineering",   color: "value--purple" },
+    { label: "Registros Treino",  value: "307.511", sub: "application_train.csv",      color: "value--yellow" },
+    { label: "Registros Teste",   value: "48.744",  sub: "application_test.csv",       color: "value--orange" },
+    { label: "Folds CV",          value: "5",       sub: "StratifiedKFold",            color: "value--red"    }
+  ],
+
+  business_assumptions: [
+    { icon:"💰", label:"Taxa de Recuperação", value:"20%",           color:"var(--accent-yellow)", desc:"Percentual do crédito recuperado em caso de inadimplência." },
+    { icon:"📅", label:"Prazo Médio",         value:"24 meses",      color:"var(--accent-blue)",   desc:"Proxy de prazo para cálculo de receita no caso de FP." },
+    { icon:"❌", label:"Custo do FP",         value:"Annuity × 24",  color:"var(--accent-red)",    desc:"Bom cliente rejeitado: perda de receita futura de juros." },
+    { icon:"⚠️", label:"Custo do FN",         value:"Crédito × 80%", color:"var(--accent-orange)", desc:"Mau cliente aprovado: perda líquida do capital não recuperado." }
+  ],
+
+  dataset_overview: [
+    { file:"application_train.csv",    rows:307511,   cols:122, nullPct:24.40, key:"SK_ID_CURR",   desc:"Tabela central de treino. Contém TARGET (variável alvo)." },
+    { file:"application_test.csv",     rows:48744,    cols:121, nullPct:23.81, key:"SK_ID_CURR",   desc:"Tabela central de teste. Sem TARGET." },
+    { file:"bureau.csv",               rows:1716428,  cols:17,  nullPct:13.50, key:"SK_ID_BUREAU", desc:"Créditos externos em bureaus (Serasa/SPC equivalente)." },
+    { file:"bureau_balance.csv",       rows:27299925, cols:3,   nullPct:0.00,  key:"SK_ID_BUREAU", desc:"Histórico mensal de status de cada crédito externo." },
+    { file:"previous_application.csv", rows:1670214,  cols:37,  nullPct:17.98, key:"SK_ID_PREV",   desc:"Todas as propostas anteriores na própria Home Credit." },
+    { file:"POS_CASH_balance.csv",     rows:10001358, cols:8,   nullPct:0.07,  key:"SK_ID_PREV",   desc:"Saldo mensal de empréstimos POS e crédito pessoal." },
+    { file:"installments_payments.csv",rows:13605401, cols:8,   nullPct:0.01,  key:"SK_ID_PREV",   desc:"Histórico de parcelas geradas vs. pagamentos efetuados." },
+    { file:"credit_card_balance.csv",  rows:3840312,  cols:23,  nullPct:6.65,  key:"SK_ID_PREV",   desc:"Saldo mensal e comportamento de cartões de crédito." }
+  ],
+
+  feature_importance: [
+    { feature:"ANNUITY_CREDIT_RATIO",    importance:1291, source:"Principal"  },
+    { feature:"AGE_YEARS",               importance:897,  source:"Principal"  },
+    { feature:"EXT_SOURCE_3",            importance:840,  source:"Principal"  },
+    { feature:"prev_amt_annuity_mean",   importance:825,  source:"Periférica" },
+    { feature:"prev_days_decision_mean", importance:782,  source:"Periférica" },
+    { feature:"EXT_SOURCE_1",            importance:775,  source:"Principal"  },
+    { feature:"EXT_SOURCE_MEAN",         importance:771,  source:"Principal"  },
+    { feature:"DAYS_EMPLOYED",           importance:741,  source:"Principal"  },
+    { feature:"bureau_debt_ratio_mean",  importance:710,  source:"Periférica" },
+    { feature:"prev_amt_credit_max",     importance:669,  source:"Periférica" },
+    { feature:"YEARS_ID_PUBLISH",        importance:668,  source:"Principal"  },
+    { feature:"bureau_days_credit_max",  importance:656,  source:"Periférica" },
+    { feature:"bureau_amt_credit_sum",   importance:623,  source:"Periférica" },
+    { feature:"EXT_SOURCE_STD",          importance:615,  source:"Principal"  },
+    { feature:"prev_credit_app_ratio",   importance:608,  source:"Periférica" },
+    { feature:"AMT_ANNUITY",             importance:594,  source:"Principal"  },
+    { feature:"EXT_SOURCE_2",            importance:584,  source:"Principal"  },
+    { feature:"EXT_SOURCE_PRODUCT",      importance:582,  source:"Principal"  },
+    { feature:"YEARS_REGISTRATION",      importance:574,  source:"Principal"  },
+    { feature:"bureau_days_credit_mean", importance:570,  source:"Periférica" },
+    { feature:"ANNUITY_INCOME_RATIO",    importance:550,  source:"Principal"  },
+    { feature:"bureau_days_credit_std",  importance:543,  source:"Periférica" },
+    { feature:"prev_amt_credit_mean",    importance:538,  source:"Periférica" },
+    { feature:"EXT_SOURCE_MAX",          importance:531,  source:"Principal"  },
+    { feature:"inst_delay_trend",        importance:528,  source:"Periférica" }
+  ]
+};
+
+// ══════════════════════════════════════════════════════════════════════
+// UTILS
+// ══════════════════════════════════════════════════════════════════════
+function fmt(val, fb) {
+  fb = fb || "—";
+  if (val == null || isNaN(val)) return fb;
+  return Number(val).toLocaleString("pt-BR");
+}
+function nullColor(p) {
+  if (p === 0) return "var(--accent-green)";
+  if (p < 5)   return "var(--accent-blue)";
+  if (p < 20)  return "var(--accent-yellow)";
+  return "var(--accent-red)";
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// COMPONENTS
+// ══════════════════════════════════════════════════════════════════════
+
+function renderHeader(model) {
+  var m = model || {};
+  var auc = m.auc_roc != null ? Number(m.auc_roc).toFixed(4) : "—";
+  var thr = m.threshold != null ? Number(m.threshold).toFixed(3) : "—";
+  var feat = m.total_features != null ? m.total_features : "—";
+  var e1 = document.getElementById("auc-chip");
+  var e2 = document.getElementById("threshold-chip");
+  var e3 = document.getElementById("features-chip");
+  if (e1) e1.textContent = "AUC-ROC: " + auc;
+  if (e2) e2.textContent = "Threshold: " + thr;
+  if (e3) e3.textContent = "Features: " + feat;
+}
+
+function renderSummaryCards(cards) {
+  var el = document.getElementById("summary-cards");
+  if (!el) return;
+  el.innerHTML = (cards || []).map(function(c) {
+    return '<div class="summary-card" role="listitem">' +
+      '<span class="summary-card__label">' + (c.label || "—") + '</span>' +
+      '<span class="summary-card__value ' + (c.color || "") + '">' + (c.value || "—") + '</span>' +
+      '<span class="summary-card__sub">' + (c.sub || "") + '</span>' +
+    '</div>';
+  }).join("");
+}
+
+function renderConfusionMatrix(cm) {
+  cm = cm || {};
+  var el  = document.getElementById("confusion-matrix");
+  var tag = document.getElementById("confusion-tag");
+  var leg = document.getElementById("confusion-legend");
+  if (!el) return;
+  if (tag) tag.textContent = "Threshold = " + (cm.threshold != null ? Number(cm.threshold).toFixed(3) : "—");
+  el.innerHTML =
+    '<div></div>' +
+    '<div class="cm-header">Predito: Adimplente</div>' +
+    '<div class="cm-header">Predito: Inadimplente</div>' +
+    '<div class="cm-header cm-header--row">Real: Adimplente</div>' +
+    '<div class="cm-cell cm-cell--tn">' +
+      '<span class="cm-cell__value color--green">' + fmt(cm.tn) + '</span>' +
+      '<span class="cm-cell__label color--green">TN</span>' +
+      '<span class="cm-cell__sub">Adimplente correto</span>' +
+    '</div>' +
+    '<div class="cm-cell cm-cell--fp">' +
+      '<span class="cm-cell__value color--red">' + fmt(cm.fp) + '</span>' +
+      '<span class="cm-cell__label color--red">FP</span>' +
+      '<span class="cm-cell__sub">Bom cliente rejeitado</span>' +
+    '</div>' +
+    '<div class="cm-header cm-header--row">Real: Inadimplente</div>' +
+    '<div class="cm-cell cm-cell--fn">' +
+      '<span class="cm-cell__value color--yellow">' + fmt(cm.fn) + '</span>' +
+      '<span class="cm-cell__label color--yellow">FN</span>' +
+      '<span class="cm-cell__sub">Inadimplente aprovado</span>' +
+    '</div>' +
+    '<div class="cm-cell cm-cell--tp">' +
+      '<span class="cm-cell__value color--blue">' + fmt(cm.tp) + '</span>' +
+      '<span class="cm-cell__label color--blue">TP</span>' +
+      '<span class="cm-cell__sub">Inadimplente bloqueado</span>' +
+    '</div>';
+
+  if (leg) {
+    leg.innerHTML = [
+      { color:"var(--accent-green)",  label:"TN — Acerto (adimplente)" },
+      { color:"var(--accent-blue)",   label:"TP — Acerto (inadimplente)" },
+      { color:"var(--accent-red)",    label:"FP — Receita perdida" },
+      { color:"var(--accent-yellow)", label:"FN — Crédito em risco" }
+    ].map(function(i) {
+      return '<div class="legend-item"><span class="legend-dot" style="background:' + i.color + '"></span><span>' + i.label + '</span></div>';
+    }).join("");
+  }
+}
+
+function renderDatasetTable(rows) {
+  var tbody = document.getElementById("dataset-tbody");
+  if (!tbody) return;
+  tbody.innerHTML = (rows || []).map(function(r) {
+    var pct   = r.nullPct || 0;
+    var color = nullColor(pct);
+    return '<tr>' +
+      '<td class="file-name">' + (r.file || "—") + '</td>' +
+      '<td class="text-right">' + fmt(r.rows) + '</td>' +
+      '<td class="text-right">' + fmt(r.cols) + '</td>' +
+      '<td><span class="key-badge">' + (r.key || "—") + '</span></td>' +
+      '<td><div class="null-bar-wrap">' +
+        '<div class="null-bar-bg"><div class="null-bar-fill" style="width:' + Math.min(pct,100) + '%;background:' + color + ';"></div></div>' +
+        '<span class="null-bar-pct" style="color:' + color + '">' + pct.toFixed(1) + '%</span>' +
+      '</div></td>' +
+      '<td class="desc-text">' + (r.desc || "—") + '</td>' +
+    '</tr>';
+  }).join("");
+}
+
+function renderFinanceCards(items) {
+  var el = document.getElementById("finance-cards");
+  if (!el) return;
+  el.innerHTML = (items || []).map(function(i) {
+    return '<div class="finance-card" role="listitem">' +
+      '<span class="finance-card__icon">' + (i.icon || "") + '</span>' +
+      '<span class="finance-card__label">' + (i.label || "—") + '</span>' +
+      '<span class="finance-card__value" style="color:' + (i.color || "inherit") + '">' + (i.value || "—") + '</span>' +
+      '<span class="finance-card__desc">' + (i.desc || "") + '</span>' +
+    '</div>';
+  }).join("");
+}
+
+function renderTargetChart(dist) {
+  dist = dist || {};
+  var canvas = document.getElementById("chart-target");
+  if (!canvas || typeof Chart === "undefined") return;
+  var adm  = (dist.adimplente  || {}).count || 0;
+  var inad = (dist.inadimplente || {}).count || 0;
+  var total = dist.total || (adm + inad) || 1;
+  new Chart(canvas, {
+    type: "bar",
+    data: {
+      labels: [
+        "Adimplente (0)\n" + ((adm/total)*100).toFixed(1) + "%",
+        "Inadimplente (1)\n" + ((inad/total)*100).toFixed(1) + "%"
+      ],
+      datasets: [{
+        data: [adm, inad],
+        backgroundColor: ["rgba(63,185,80,.7)","rgba(248,81,73,.7)"],
+        borderColor:     ["#3fb950","#f85149"],
+        borderWidth: 1, borderRadius: 6
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: function(ctx) { return " " + fmt(ctx.raw) + " (" + ((ctx.raw/total)*100).toFixed(2) + "%)"; } } }
+      },
+      scales: {
+        x: { ticks: { color:"#8b949e", font:{ size:11 } }, grid:{ color:"#21262d" } },
+        y: { ticks: { color:"#8b949e", font:{ size:11 }, callback: function(v) { return fmt(v); } }, grid:{ color:"#21262d" } }
+      }
+    }
+  });
+}
+
+var featureChart = null;
+function renderFeatureChart(features, filter) {
+  filter = filter || "all";
+  var canvas = document.getElementById("chart-features");
+  if (!canvas || typeof Chart === "undefined") return;
+  var filtered = (features || []).filter(function(f) {
+    return filter === "all" || f.source === filter;
+  }).slice(0, 25);
+  var labels  = filtered.map(function(f) { return f.feature || "—"; });
+  var values  = filtered.map(function(f) { return f.importance || 0; });
+  var colors  = filtered.map(function(f) { return f.source === "Periférica" ? "rgba(248,81,73,.75)" : "rgba(88,166,255,.75)"; });
+  var borders = filtered.map(function(f) { return f.source === "Periférica" ? "#f85149" : "#58a6ff"; });
+  if (featureChart) { featureChart.destroy(); featureChart = null; }
+  featureChart = new Chart(canvas, {
+    type: "bar",
+    data: { labels: labels, datasets: [{ data: values, backgroundColor: colors, borderColor: borders, borderWidth: 1, borderRadius: 4 }] },
+    options: {
+      indexAxis: "y", responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: {
+          label: function(ctx) { return " Importância: " + fmt(ctx.raw); },
+          afterLabel: function(ctx) { return " Origem: " + (filtered[ctx.dataIndex] || {}).source; }
+        }}
+      },
+      scales: {
+        x: { ticks: { color:"#8b949e", font:{ size:10 } }, grid:{ color:"#21262d" } },
+        y: { ticks: { color:"#c9d1d9", font:{ size:11 } }, grid:{ color:"#21262d" } }
+      }
+    }
+  });
+}
+
+function initFilters(features) {
+  var btns = document.querySelectorAll(".filter-btn");
+  btns.forEach(function(btn) {
+    btn.addEventListener("click", function() {
+      btns.forEach(function(b) { b.classList.remove("active"); });
+      btn.classList.add("active");
+      renderFeatureChart(features, btn.getAttribute("data-filter") || "all");
+    });
+  });
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// APP LIFECYCLE
+// ══════════════════════════════════════════════════════════════════════
+function showLoading() {
+  document.getElementById("loading-state").classList.remove("hidden");
+  document.getElementById("error-state").classList.add("hidden");
+  document.getElementById("app").classList.add("hidden");
+}
+function showError(msg) {
+  document.getElementById("loading-state").classList.add("hidden");
+  document.getElementById("app").classList.add("hidden");
+  document.getElementById("error-detail").textContent = msg || "Erro desconhecido.";
+  document.getElementById("error-state").classList.remove("hidden");
+}
+function showApp() {
+  document.getElementById("loading-state").classList.add("hidden");
+  document.getElementById("error-state").classList.add("hidden");
+  document.getElementById("app").classList.remove("hidden");
+}
+
+function mountAll(data) {
+  renderHeader(data.model);
+  renderSummaryCards(data.summary_cards);
+  renderConfusionMatrix(data.confusion_matrix);
+  renderDatasetTable(data.dataset_overview);
+  renderFinanceCards(data.business_assumptions);
+  renderTargetChart(data.target_distribution);
+  renderFeatureChart(data.feature_importance, "all");
+  initFilters(data.feature_importance);
+}
+
+function bootstrap() {
+  showLoading();
+  // Simula 700ms de loading para demonstrar o estado visual
+  setTimeout(function() {
+    try {
+      if (!DATA || !DATA.model) throw new Error("Dados do pipeline não encontrados.");
+      mountAll(DATA);
+      showApp();
+    } catch(err) {
+      console.error("[Squad3]", err);
+      showError(err.message || "Falha ao inicializar.");
+    }
+  }, 700);
+}
+
+document.addEventListener("DOMContentLoaded", bootstrap);
+</script>
+</body>
+</html>
