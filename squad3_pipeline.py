@@ -32,9 +32,22 @@ warnings.filterwarnings("ignore")
 pd.set_option("display.max_columns", 50)
 
 # ── Caminhos ──────────────────────────────────────────────────────────────────
-DATA_DIR   = r"c:\Users\joker\OneDrive\Área de Trabalho\Atividade final Julio\home-credit-default-risk"
-OUTPUT_DIR = r"c:\Users\joker\OneDrive\Área de Trabalho\Atividade final Julio\output"
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_DIR   = os.path.join(SCRIPT_DIR, "home-credit-default-risk")
+OUTPUT_DIR = os.path.join(SCRIPT_DIR, "output")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+# Verificação amigável da existência do dataset original antes de rodar
+if not os.path.exists(DATA_DIR):
+    import sys
+    print("\n" + "=" * 72)
+    print("[ERRO] Dataset original do Home Credit não encontrado!")
+    print(f"Esperado na pasta: {DATA_DIR}")
+    print("\nPor favor, baixe o dataset da competição do Kaggle:")
+    print("👉 https://www.kaggle.com/c/home-credit-default-risk/data")
+    print("E extraia os arquivos CSV diretamente dentro da pasta acima para rodar o pipeline.")
+    print("=" * 72 + "\n")
+    sys.exit(1)
 
 # ── Premissas financeiras de negócio ─────────────────────────────────────────
 TAXA_RECUPERACAO  = 0.20   # % do crédito recuperado em caso de inadimplência
@@ -118,7 +131,9 @@ gc.collect()
 # ══════════════════════════════════════════════════════════════════════════════
 print(f"\n[BLOCO 2] Limpeza e tratamento da tabela principal...\n")
 
-def limpar_application(df):
+CATEGORICAL_ENCODERS = {}
+
+def limpar_application(df, is_train=True):
     df = df.copy()
 
     # ── Anomalias documentadas ───────────────────────────────────────────────
@@ -165,16 +180,33 @@ def limpar_application(df):
         df["EXT_SOURCE_STD"]     = df[ext_present].std(axis=1)
         df["EXT_SOURCE_PRODUCT"] = df[ext_present].prod(axis=1)
 
-    # ── Encoding de categóricas ───────────────────────────────────────────────
+    # ── Encoding de categóricas (consistente e salvável) ──────────────────────
     cat_cols = df.select_dtypes("object").columns.tolist()
     for col in cat_cols:
-        le = LabelEncoder()
-        df[col] = le.fit_transform(df[col].astype(str))
+        if is_train:
+            le = LabelEncoder()
+            df[col] = le.fit_transform(df[col].astype(str))
+            CATEGORICAL_ENCODERS[col] = le
+        else:
+            if col in CATEGORICAL_ENCODERS:
+                le = CATEGORICAL_ENCODERS[col]
+                # Tratar categorias inéditas de forma segura mapeando temporariamente
+                valid_classes = set(le.classes_)
+                df[col] = df[col].astype(str).apply(lambda val: val if val in valid_classes else 'unknown')
+                
+                if 'unknown' not in le.classes_:
+                    le_classes = le.classes_.tolist() + ['unknown']
+                    le.classes_ = np.array(le_classes)
+                
+                df[col] = le.transform(df[col])
+            else:
+                le = LabelEncoder()
+                df[col] = le.fit_transform(df[col].astype(str))
 
     return df
 
-app_train = limpar_application(app_train)
-app_test  = limpar_application(app_test)
+app_train = limpar_application(app_train, is_train=True)
+app_test  = limpar_application(app_test, is_train=False)
 print(f"  application_train após limpeza: {app_train.shape}")
 print(f"  application_test  após limpeza: {app_test.shape}")
 
@@ -395,6 +427,19 @@ del prev
 gc.collect()
 
 
+# ── Exportar tabelas periféricas agregadas para otimização do Streamlit ───────
+FEATURES_AGREGADAS_DIR = os.path.join(OUTPUT_DIR, "features_agregadas")
+os.makedirs(FEATURES_AGREGADAS_DIR, exist_ok=True)
+
+print("\n[BLOCO 3.G] Exportando features agregadas comportamentais para uso no Streamlit...")
+bureau_agg.to_csv(os.path.join(FEATURES_AGREGADAS_DIR, "bureau_agg.csv.gz"), index=False, compression="gzip")
+bb_agg.to_csv(os.path.join(FEATURES_AGREGADAS_DIR, "bb_agg.csv.gz"), index=False, compression="gzip")
+prev_agg.to_csv(os.path.join(FEATURES_AGREGADAS_DIR, "prev_agg.csv.gz"), index=False, compression="gzip")
+inst_agg.to_csv(os.path.join(FEATURES_AGREGADAS_DIR, "inst_agg.csv.gz"), index=False, compression="gzip")
+pos_agg.to_csv(os.path.join(FEATURES_AGREGADAS_DIR, "pos_agg.csv.gz"), index=False, compression="gzip")
+cc_agg.to_csv(os.path.join(FEATURES_AGREGADAS_DIR, "cc_agg.csv.gz"), index=False, compression="gzip")
+print("  [OK] Tabelas agregadas compactadas em gzip com sucesso!")
+
 # ══════════════════════════════════════════════════════════════════════════════
 # BLOCO 4 — JOIN SEGURO (grain preservado: 1 linha = 1 cliente)
 # ══════════════════════════════════════════════════════════════════════════════
@@ -414,8 +459,8 @@ for nome, tbl in tabelas_perifericas:
     app_train = app_train.merge(tbl, on="SK_ID_CURR", how="left")
     app_test  = app_test.merge(tbl,  on="SK_ID_CURR", how="left")
     depois = app_train.shape[0]
-    assert antes == depois, f"ERRO: {nome} duplicou linhas! ({antes} → {depois})"
-    print(f"  ✅ {nome:15s} joined | features adicionadas: +{len(tbl.columns)-1:3d} | treino shape: {app_train.shape}")
+    assert antes == depois, f"ERRO: {nome} duplicou linhas! ({antes} -> {depois})"
+    print(f"  [OK] {nome:15s} joined | features adicionadas: +{len(tbl.columns)-1:3d} | treino shape: {app_train.shape}")
 
 del bureau_agg, bb_agg, prev_agg, inst_agg, pos_agg, cc_agg
 gc.collect()
@@ -463,6 +508,7 @@ cv          = StratifiedKFold(n_splits=N_SPLITS, shuffle=True, random_state=RAND
 oof_preds   = np.zeros(len(X))
 test_preds  = np.zeros(len(X_test_sub))
 fold_aucs   = []
+fold_models = []  # Lista para armazenar os modelos de cada fold para o ensemble
 last_model  = None
 
 for fold, (tr_idx, val_idx) in enumerate(cv.split(X, y), 1):
@@ -484,8 +530,9 @@ for fold, (tr_idx, val_idx) in enumerate(cv.split(X, y), 1):
 
     fold_auc = roc_auc_score(y_val, oof_preds[val_idx])
     fold_aucs.append(fold_auc)
+    fold_models.append(model)  # Adiciona modelo na lista
     last_model = model
-    print(f"  Fold {fold}/{N_SPLITS} → AUC: {fold_auc:.4f}  |  best_iter: {model.best_iteration_}")
+    print(f"  Fold {fold}/{N_SPLITS} -> AUC: {fold_auc:.4f}  |  best_iter: {model.best_iteration_}")
 
 overall_auc = roc_auc_score(y, oof_preds)
 print(f"\n  {'─'*50}")
@@ -680,15 +727,15 @@ fig.text(0.5, 0.96,
 out_img = os.path.join(OUTPUT_DIR, "squad3_dashboard.png")
 plt.savefig(out_img, dpi=150, bbox_inches="tight", facecolor=fig.get_facecolor())
 plt.close()
-print(f"  ✅ Dashboard salvo em: {out_img}")
+print(f"  [OK] Dashboard salvo em: {out_img}")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# BLOCO 8 — SUBMISSION + RELATÓRIO FINAL
+# BLOCO 8 — SUBMISSION + RELATÓRIO FINAL E PERSISTÊNCIA DO MODELO
 # ══════════════════════════════════════════════════════════════════════════════
 submission = pd.DataFrame({"SK_ID_CURR": test_ids, "TARGET": test_preds})
 submission.to_csv(os.path.join(OUTPUT_DIR, "squad3_submission.csv"), index=False)
-print(f"  ✅ Submission salva  : {OUTPUT_DIR}\\squad3_submission.csv")
+print(f"  [OK] Submission salva  : {os.path.join(OUTPUT_DIR, 'squad3_submission.csv')}")
 
 # Relatório de features geradas
 feat_report = feat_imp.sort_values(ascending=False).reset_index()
@@ -698,7 +745,37 @@ feat_report["source"] = feat_report["feature"].apply(
               else "Principal"
 )
 feat_report.to_csv(os.path.join(OUTPUT_DIR, "squad3_feature_importance.csv"), index=False)
-print(f"  ✅ Feature report    : {OUTPUT_DIR}\\squad3_feature_importance.csv")
+print(f"  [OK] Feature report    : {os.path.join(OUTPUT_DIR, 'squad3_feature_importance.csv')}")
+
+# ── Persistência de Modelos, Encoders e Metadados para o Streamlit ───────────
+import pickle
+import json
+
+# Salvando a lista de modelos do ensemble e os Label Encoders
+ensemble_assets = {
+    "models": fold_models,
+    "categorical_encoders": CATEGORICAL_ENCODERS
+}
+
+model_path = os.path.join(OUTPUT_DIR, "squad3_lgb_ensemble.pkl")
+with open(model_path, "wb") as f:
+    pickle.dump(ensemble_assets, f)
+print(f"  [OK] Ensemble de Modelos e Encoders salvos em: {model_path}")
+
+# Salvando metadados importantes (threshold ótimo e lista de features na ordem correta)
+metadata = {
+    "threshold_otimo": float(best["threshold"]),
+    "features": FEATURES,
+    "premissas": {
+        "taxa_recuperacao": float(TAXA_RECUPERACAO),
+        "prazo_medio_meses": int(PRAZO_MEDIO_MESES)
+    }
+}
+
+metadata_path = os.path.join(OUTPUT_DIR, "squad3_metadata.json")
+with open(metadata_path, "w", encoding="utf-8") as f:
+    json.dump(metadata, f, indent=4, ensure_ascii=False)
+print(f"  [OK] Metadados de inferência salvos em: {metadata_path}")
 
 print(f"\n{DIVIDER}")
 print(f"  PIPELINE CONCLUÍDO")

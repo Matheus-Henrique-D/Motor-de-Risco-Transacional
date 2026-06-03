@@ -1,5 +1,7 @@
 # Ignore all CSV files
 *.csv
+!amostra_novos_clientes.csv
+home-credit-default-risk/
 processed_data/
 csvs/
 

@@ -37,34 +37,30 @@ Construir um **modelo preditivo de risco de crédito** capaz de:
 ## 🗂️ Estrutura do Repositório
 
 ```
-Atividade final Julio/
+Motor-de-Risco-Transacional/
 │
-├── home-credit-default-risk/          ← Dataset original (não modificar)
+├── docs/                              ← Pasta de documentação e diretrizes do projeto
+│   └── DESAFIO.md                     # Descrição detalhada e regras das Squads
+│
+├── home-credit-default-risk/          ← Dataset original do Kaggle (Local / Não versionado)
 │   ├── application_train.csv          # Tabela principal — treino (307.511 clientes)
 │   ├── application_test.csv           # Tabela principal — teste (48.744 clientes)
-│   ├── bureau.csv                     # Créditos externos (1,7M registros)
-│   ├── bureau_balance.csv             # Saldo mensal dos créditos externos (27,3M)
-│   ├── previous_application.csv       # Propostas anteriores na Home Credit (1,7M)
-│   ├── POS_CASH_balance.csv           # Saldo mensal POS/empréstimos (10M registros)
-│   ├── installments_payments.csv      # Histórico de pagamentos (13,6M registros)
-│   ├── credit_card_balance.csv        # Saldo mensal de cartões (3,8M registros)
-│   └── HomeCredit_columns_description.csv  # Dicionário de dados
+│   └── ...                            # Outros 6 arquivos CSV de comportamento transacional
 │
 ├── output/                            ← Gerado automaticamente ao rodar o pipeline
-│   ├── squad3_dashboard.png           # Dashboard visual completo (dark mode)
-│   ├── squad3_submission.csv          # Probabilidades de inadimplência (test set) (Versionado - Resultado)
-│   └── squad3_feature_importance.csv  # Ranking de importância de todas as features (Versionado - Resultado)
+│   ├── squad3_dashboard.png           # Dashboard visual analítico completo (PNG)
+│   ├── squad3_submission.csv          # Probabilidades preditas para o conjunto de testes
+│   ├── squad3_feature_importance.csv  # Ranking de relevância de todas as 248 features
+│   ├── squad3_lgb_ensemble.pkl        # Modelos treinados (Ensemble de 5 folds) + Encoders
+│   ├── squad3_metadata.json           # Lista de features e threshold ótimo de decisão (0.931)
+│   └── features_agregadas/            # [GZIP] Agregações históricas comprimidas para o Streamlit
 │
-├── dashboard/                         ← Painel web interativo (HTML/JS/CSS)
-│   ├── index.html                     # Interface web do painel
-│   ├── css/
-│   │   └── dashboard.css              # Estilos do painel
-│   └── js/
-│       ├── app.js                     # Lógica principal e dados dinâmicos
-│       ├── components.js              # Componentes de renderização
-│       └── data.js                    # Fonte de dados estruturada para o painel
-│
-├── squad3_pipeline.py                 ← ⭐ Pipeline principal (execute este arquivo)
+├── app.py                             ← ⭐ Interface Gráfica Interativa (Streamlit)
+├── amostra_novos_clientes.csv         ← Amostra leve de 100 clientes para demonstração rápida do app
+├── download_dataset.py                ← Script utilitário para download dos dados via KaggleHub
+├── squad3_pipeline.py                 ← Script técnico do pipeline (treinamento e engenharia)
+├── train_baseline.py                  ← Script de modelo de baseline simples
+├── process_features.py                ← Script de suporte de features
 └── README.md                          ← Este arquivo
 ```
 
@@ -184,28 +180,44 @@ inst_agg["inst_delay_trend"] = inst_agg["inst_delay_mean_3m"] - inst_agg["inst_d
 
 ### Pré-requisitos
 
+Instale as dependências de machine learning e interface:
 ```bash
-pip install lightgbm pandas numpy scikit-learn matplotlib
+pip install streamlit lightgbm pandas numpy scikit-learn matplotlib
 ```
 
-### Execução
+---
 
-```bash
-python squad3_pipeline.py
-```
+### Opção A: Executar a Aplicação Streamlit (Demonstração Rápida)
+Se você deseja apenas testar a interface do aplicativo de decisão comercial imediatamente (com o modelo e as features agregadas que já estão versionados):
 
-> ⏱️ **Tempo estimado:** 15–40 minutos (dependendo do hardware), dado o volume dos dados:
-> - `bureau_balance.csv`: 27,3 milhões de linhas
-> - `installments_payments.csv`: 13,6 milhões de linhas
+1. Execute no terminal:
+   ```bash
+   streamlit run app.py
+   ```
+2. A página abrirá no seu navegador. Faça o upload do arquivo [amostra_novos_clientes.csv](file:///c:/Users/natha/Documents/GitHub/Motor-de-Risco-Transacional/amostra_novos_clientes.csv) (localizado na raiz do projeto) para ver as predições de probabilidade de default e as decisões automáticas de crédito (**Aprovar / Revisar / Bloquear**).
 
-### Saídas esperadas
+---
 
-```
-output/
-├── squad3_dashboard.png           ← Abrir para ver os resultados visuais
-├── squad3_submission.csv          ← Submissão para avaliação
-└── squad3_feature_importance.csv  ← Análise das features mais relevantes
-```
+### Opção B: Rodar o Pipeline Técnico (Treinamento do Zero)
+Se deseja treinar os modelos novamente, recalcular a engenharia de variáveis e recalcular o threshold ótimo:
+
+1. **Autenticação no Kaggle**: Obtenha seu token de API `kaggle.json` no site do Kaggle e mova para `C:\Users\natha\.kaggle\kaggle.json` (instruções completas em [docs/DESAFIO.md](file:///c:/Users/natha/Documents/GitHub/Motor-de-Risco-Transacional/docs/DESAFIO.md)).
+2. **Download**: Execute o script utilitário de download na raiz:
+   ```bash
+   python download_dataset.py
+   ```
+3. **Mover dados**: Extraia os CSVs na pasta `home-credit-default-risk/`.
+4. **Execução**: Rode o pipeline:
+   ```bash
+   python squad3_pipeline.py
+   ```
+   > ⏱️ **Tempo estimado:** 10–25 minutos.
+
+### Saídas geradas em `output/`
+
+* `squad3_dashboard.png`: Gráficos de Profit Curve, matriz de confusão e importância de variáveis.
+* `squad3_lgb_ensemble.pkl`: O ensemble de 5 modelos de classificação LightGBM.
+* `squad3_metadata.json`: O valor de threshold ótimo de negócio (`0.931`) e colunas utilizadas.
 
 ---
 
