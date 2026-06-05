@@ -1,6 +1,6 @@
-# 🏦 Motor de Risco Transacional Multi-Tabelas
+# 🏦 Motor de Risco Transacional Multi-Tabelas.
 ## Sistema de Risco Transacional Multi-Tabelas para avaliação de crédito utilizando LightGBM e interface Streamlit.
-### Squad 3 — Home Credit Finanças | Hackathon de Data Science
+### Squad 3 — Home Credit Finanças | Hackathon de Data Science.
 
 ---
 
